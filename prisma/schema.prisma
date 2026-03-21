@@ -3,9 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"  
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
-
 // Enums (fonctionnent très bien avec SQLite + Prisma)
 enum QuotaPeriode {
   SEMESTRE
@@ -15,8 +15,11 @@ enum QuotaPeriode {
 enum Semestre {
   S1
   S2
+  S3
+  S4
+  S5
+  S6
 }
-
 // ======================================================================
 // 1. Sécurité & Utilisateurs
 // ======================================================================
@@ -51,6 +54,7 @@ model Utilisateur {
 
   idRole     Int
   role       Role     @relation(fields: [idRole], references: [id], onDelete: Restrict)
+  mdp        String
 
   idStatut   Int
   statut     Statut   @relation(fields: [idStatut], references: [id], onDelete: Restrict)

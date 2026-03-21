@@ -23,6 +23,7 @@ CREATE TABLE "Utilisateur" (
     "prenom" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "idRole" INTEGER NOT NULL,
+    "mdp" TEXT NOT NULL,
     "idStatut" INTEGER NOT NULL,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
