@@ -2,10 +2,15 @@ import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
-import { HTTPException } from 'hono/http-exception' // NOUVEAU
+import { HTTPException } from 'hono/http-exception'
 import 'dotenv/config'
 import authRoutes from './routes/auth.routes.js'
 import structureRoutes from './routes/structure.routes.js'
+import utilisateurRoutes from './routes/utilisateur.routes.js'
+import enseignementRoutes from './routes/enseignement.routes.js'
+import statutRoutes from './routes/statut.routes.js'
+import institutRoutes from './routes/institut.routes.js'
+import dashboardRoutes from './routes/dashboard.routes.js'
 
 const app = new Hono()
 
@@ -38,7 +43,11 @@ app.notFound((c) => {
 
 app.route('/auth', authRoutes)
 app.route('/structure', structureRoutes);
-
+app.route('/utilisateurs', utilisateurRoutes)
+app.route('/enseignements', enseignementRoutes)
+app.route('/statuts', statutRoutes)
+app.route('/instituts', institutRoutes)
+app.route('/dashboard', dashboardRoutes)
 const port = 3000
 console.log(`Serveur démarré sur http://localhost:${port}`)
 

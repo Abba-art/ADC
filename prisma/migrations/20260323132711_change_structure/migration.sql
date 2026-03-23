@@ -22,14 +22,23 @@ CREATE TABLE "Utilisateur" (
     "nom" TEXT NOT NULL,
     "prenom" TEXT NOT NULL,
     "email" TEXT NOT NULL,
-    "idRole" INTEGER NOT NULL,
     "mdp" TEXT NOT NULL,
+    "idRole" INTEGER NOT NULL,
     "idStatut" INTEGER NOT NULL,
+    "deleted_at" DATETIME,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,
-    "deletedAt" DATETIME,
     CONSTRAINT "Utilisateur_idRole_fkey" FOREIGN KEY ("idRole") REFERENCES "Role" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "Utilisateur_idStatut_fkey" FOREIGN KEY ("idStatut") REFERENCES "Statut" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "Institut" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "nom" TEXT NOT NULL,
+    "adresse" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
 );
 
 -- CreateTable
@@ -111,6 +120,22 @@ CREATE TABLE "Enseignement" (
     CONSTRAINT "Enseignement_courseId_fkey" FOREIGN KEY ("courseId") REFERENCES "Course" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
+-- CreateTable
+CREATE TABLE "_InstitutToUtilisateur" (
+    "A" INTEGER NOT NULL,
+    "B" TEXT NOT NULL,
+    CONSTRAINT "_InstitutToUtilisateur_A_fkey" FOREIGN KEY ("A") REFERENCES "Institut" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "_InstitutToUtilisateur_B_fkey" FOREIGN KEY ("B") REFERENCES "Utilisateur" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "_FiliereToInstitut" (
+    "A" INTEGER NOT NULL,
+    "B" INTEGER NOT NULL,
+    CONSTRAINT "_FiliereToInstitut_A_fkey" FOREIGN KEY ("A") REFERENCES "Filiere" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "_FiliereToInstitut_B_fkey" FOREIGN KEY ("B") REFERENCES "Institut" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "Role_libelle_key" ON "Role"("libelle");
 
@@ -119,6 +144,9 @@ CREATE UNIQUE INDEX "Statut_libelle_key" ON "Statut"("libelle");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Utilisateur_email_key" ON "Utilisateur"("email");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Institut_nom_key" ON "Institut"("nom");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Filiere_nom_key" ON "Filiere"("nom");
@@ -140,3 +168,15 @@ CREATE INDEX "Enseignement_courseId_estActif_idx" ON "Enseignement"("courseId", 
 
 -- CreateIndex
 CREATE INDEX "Enseignement_utilisateurId_idx" ON "Enseignement"("utilisateurId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "_InstitutToUtilisateur_AB_unique" ON "_InstitutToUtilisateur"("A", "B");
+
+-- CreateIndex
+CREATE INDEX "_InstitutToUtilisateur_B_index" ON "_InstitutToUtilisateur"("B");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "_FiliereToInstitut_AB_unique" ON "_FiliereToInstitut"("A", "B");
+
+-- CreateIndex
+CREATE INDEX "_FiliereToInstitut_B_index" ON "_FiliereToInstitut"("B");
