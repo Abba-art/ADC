@@ -159,4 +159,94 @@ export class EnseignementService {
       reste: quotaMax - chargeActuelle,
     }
   }
+  async getEnseignementsActifs(role: string, institutIds: number[]) {
+    const where: any = { estActif: true, statutValidation: 'VALIDE' };
+    
+    if (role === 'CHEF_ETABLISSEMENT' || role === 'CHEF_DEPARTEMENT') {
+      where.course = { classe: { filiere: { instituts: { some: { id: { in: institutIds } } } } } };
+    }
+
+    return prisma.enseignement.findMany({
+      where,
+      include: {
+        utilisateur: { select: { nom: true, prenom: true, statut: { select: { libelle: true } } } },
+        course: { include: { matiere: true, classe: true, annee: true } }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+  }
+
+  // 2. Vue pour le Chef d'Établissement (Ce qu'il doit valider)
+  async getPropositionsEnAttente(role: string, institutIds: number[]) {
+    const where: any = { estActif: true, statutValidation: 'PROPOSITION' };
+    
+    if (role === 'CHEF_ETABLISSEMENT' && institutIds.length > 0) {
+      where.course = { classe: { filiere: { instituts: { some: { id: { in: institutIds } } } } } };
+    }
+
+    return prisma.enseignement.findMany({
+      where,
+      include: {
+        utilisateur: { select: { nom: true, prenom: true } },
+        course: { include: { matiere: true, classe: true } }
+      },
+      orderBy: { createdAt: 'asc' }
+    });
+  }
+
+  // 3. L'Algorithme de Reconduction Automatique
+  async reconduireAnnee(anneeSourceId: number, anneeCibleId: number, role: string) {
+    if (anneeSourceId === anneeCibleId) throw new HTTPException(400, { message: "L'année source et cible doivent être différentes" });
+
+    // Étape 1 : Récupérer toutes les affectations actives de l'année source
+    const affectationsSource = await prisma.enseignement.findMany({
+      where: { estActif: true, statutValidation: 'VALIDE', course: { anneeId: anneeSourceId } },
+      include: { course: true }
+    });
+
+    let successCount = 0;
+    let errors: string[] = [];
+
+    // Étape 2 : Boucler et dupliquer
+    for (const oldEns of affectationsSource) {
+      // On cherche si le même cours (Matière + Classe) a été créé pour la NOUVELLE année
+      const targetCourse = await prisma.course.findUnique({
+        where: {
+          matiereId_classeId_anneeId: {
+            matiereId: oldEns.course.matiereId,
+            classeId: oldEns.course.classeId,
+            anneeId: anneeCibleId
+          }
+        }
+      });
+
+      if (!targetCourse) {
+        errors.push(`Cours introuvable en année cible pour la matière ID ${oldEns.course.matiereId}`);
+        continue;
+      }
+
+      // On vérifie s'il n'y a pas déjà un prof assigné sur ce nouveau cours
+      const dejaAssigne = await prisma.enseignement.findFirst({
+        where: { courseId: targetCourse.id, estActif: true }
+      });
+
+      if (!dejaAssigne) {
+        // Optionnel : On pourrait re-vérifier le quota du prof ici.
+        // Pour la reconduction, on part du principe qu'on duplique à l'identique.
+        await prisma.enseignement.create({
+          data: {
+            utilisateurId: oldEns.utilisateurId,
+            courseId: targetCourse.id,
+            estActif: true,
+            statutValidation: role === 'CHEF_DEPARTEMENT' ? 'PROPOSITION' : 'VALIDE',
+            motif: 'Reconduction automatique',
+            dateDebut: new Date()
+          }
+        });
+        successCount++;
+      }
+    }
+
+    return { successCount, totalTentatives: affectationsSource.length, errors };
+  }
 }

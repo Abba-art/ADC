@@ -61,15 +61,14 @@ export class StructureService {
     })
   }
 
-async getAllClasses(role: string, institutIds: number[] = []) {
+async getAllClasses(role: string, institutIds: number[] = [], filiereId?: number) {
     const where: any = { deletedAt: null }
 
-    // Si c'est un CHEF, il ne voit que les classes de SES filières/instituts
     if ((role === 'CHEF_DEPARTEMENT' || role === 'CHEF_ETABLISSEMENT') && institutIds.length > 0) {
-      where.filiere = {
-        instituts: { some: { id: { in: institutIds } } }
-      }
+      where.filiere = { instituts: { some: { id: { in: institutIds } } } }
     }
+    
+    if (filiereId) where.filiereId = filiereId; // NOUVEAU FILTRE DYNAMIQUE
 
     return prisma.classe.findMany({
       where,
@@ -117,13 +116,21 @@ async getAllClasses(role: string, institutIds: number[] = []) {
     })
   }
 
-  async getAllMatieres() {
+async getAllMatieres(role: string, institutIds: number[] = [], filiereId?: number) {
+    const where: any = {}
+
+    if ((role === 'CHEF_DEPARTEMENT' || role === 'CHEF_ETABLISSEMENT') && institutIds.length > 0) {
+      where.filiere = { instituts: { some: { id: { in: institutIds } } } }
+    }
+
+    if (filiereId) where.filiereId = filiereId; 
+
     return prisma.matiere.findMany({
+      where,
       include: { filiere: { select: { nom: true } } },
       orderBy: [{ filiere: { nom: 'asc' } }, { semestre: 'asc' }, { code: 'asc' }],
     })
   }
-
   // ───────────── Courses (Cours = Matière + Classe + Année) ─────────────
   async createCourse(data: z.infer<typeof courseSchema>) {
     const { matiereId, classeId, anneeId } = data
@@ -149,9 +156,18 @@ async getAllClasses(role: string, institutIds: number[] = []) {
     })
   }
 
-  async getAllCourses() {
+async getAllCourses(role: string, institutIds: number[] = [], classeId?: number, anneeId?: number) {
+    const where: any = { deletedAt: null }
+
+    if ((role === 'CHEF_DEPARTEMENT' || role === 'CHEF_ETABLISSEMENT') && institutIds.length > 0) {
+      where.classe = { filiere: { instituts: { some: { id: { in: institutIds } } } } }
+    }
+
+    if (classeId) where.classeId = classeId; // NOUVEAU FILTRE DYNAMIQUE
+    if (anneeId) where.anneeId = anneeId;    // NOUVEAU FILTRE DYNAMIQUE
+
     return prisma.course.findMany({
-      where: { deletedAt: null },
+      where,
       include: {
         matiere: { select: { code: true, nom: true, semestre: true } },
         classe: { select: { code: true } },

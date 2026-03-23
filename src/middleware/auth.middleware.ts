@@ -24,5 +24,6 @@ export const authMiddleware = async (c: Context, next: Next) => {
     await next()
   } catch (err) {
     throw new HTTPException(401, { message: 'Session invalide ou expirée' })
+    return await next();
   }
 }

@@ -4,7 +4,7 @@ import { authMiddleware } from '../middleware/auth.middleware.js'
 import { requireRole } from '../middleware/role.middleware.js'
 import { institutGuard } from '../middleware/institut.middleware.js'
 import { EnseignementService } from '../services/enseignement.service.js'
-import { assignationSchema, clotureSchema } from '../schemas/enseignement.schema.js'
+import { assignationSchema, clotureSchema, reconductionSchema } from '../schemas/enseignement.schema.js'
 import prisma from '../lib/prisma.js'
 import { z } from 'zod' // Correction import
 
@@ -83,5 +83,37 @@ enseignementRoutes.patch(
     return c.json({ success: true, message: `Proposition ${statut}`, data })
   }
 )
+enseignementRoutes.get('/propositions', requireRole(['ADMIN', 'CHEF_ETABLISSEMENT']), async (c) => {
+  const user = c.get('user');
+  const role = typeof user.role === 'object' && user.role !== null ? (user.role as any).libelle : user.role;
+  const institutIds = c.get('institutIds') || [];
 
+  const data = await service.getPropositionsEnAttente(role as string, institutIds);
+  return c.json({ success: true, count: data.length, data });
+});
+
+// 2. Obtenir le tableau de bord global des cours actifs
+enseignementRoutes.get('/actifs', async (c) => {
+  const user = c.get('user');
+  const role = typeof user.role === 'object' && user.role !== null ? (user.role as any).libelle : user.role;
+  const institutIds = c.get('institutIds') || [];
+
+  const data = await service.getEnseignementsActifs(role as string, institutIds);
+  return c.json({ success: true, count: data.length, data });
+});
+
+// 3. Déclencher la reconduction automatique
+enseignementRoutes.post('/reconduire', requireRole(['ADMIN', 'CHEF_ETABLISSEMENT']), zValidator('json', reconductionSchema), async (c) => {
+  const { anneeSourceId, anneeCibleId } = c.req.valid('json');
+  const user = c.get('user');
+  const role = typeof user.role === 'object' && user.role !== null ? (user.role as any).libelle : user.role;
+
+  const data = await service.reconduireAnnee(anneeSourceId, anneeCibleId, role as string);
+  
+  return c.json({ 
+    success: true, 
+    message: `${data.successCount} enseignements reconduits avec succès.`, 
+    data 
+  });
+});
 export default enseignementRoutes

@@ -49,13 +49,14 @@ structureRoutes.post('/niveaux', requireRole(['ADMIN']), zValidator('json', nive
 structureRoutes.get('/classes', async (c) => {
   const institutIds = c.get('institutIds') || [] 
   const user = c.get('user');
-  
-  // CORRECTION TYPESCRIPT ICI : On force TypeScript à comprendre la structure
   const role = typeof user.role === 'object' && user.role !== null ? (user.role as any).libelle : user.role;
   
-  const data = await service.getAllClasses(role as string, institutIds)
+  // Lecture de la requête ?filiereId=X
+  const filiereId = c.req.query('filiereId') ? parseInt(c.req.query('filiereId')!) : undefined;
+  
+  const data = await service.getAllClasses(role as string, institutIds, filiereId)
   return c.json({ success: true, data })
-})
+})  
 
 structureRoutes.post('/classes', requireRole(['ADMIN']), zValidator('json', classeSchema), async (c) => {
   const { code, filiereId, niveauId } = c.req.valid('json')
@@ -75,7 +76,13 @@ structureRoutes.post('/annees', requireRole(['ADMIN']), zValidator('json', annee
 })
 
 structureRoutes.get('/matieres', async (c) => {
-  const data = await service.getAllMatieres()
+  const institutIds = c.get('institutIds') || [] 
+  const user = c.get('user');
+  const role = typeof user.role === 'object' && user.role !== null ? (user.role as any).libelle : user.role;
+  
+  const filiereId = c.req.query('filiereId') ? parseInt(c.req.query('filiereId')!) : undefined;
+
+  const data = await service.getAllMatieres(role as string, institutIds, filiereId)
   return c.json({ success: true, data })
 })
 
@@ -86,10 +93,16 @@ structureRoutes.post('/matieres', requireRole(['ADMIN']), zValidator('json', mat
 })
 
 structureRoutes.get('/courses', async (c) => {
-  const data = await service.getAllCourses()
+  const institutIds = c.get('institutIds') || [] 
+  const user = c.get('user');
+  const role = typeof user.role === 'object' && user.role !== null ? (user.role as any).libelle : user.role;
+  
+  const classeId = c.req.query('classeId') ? parseInt(c.req.query('classeId')!) : undefined;
+  const anneeId = c.req.query('anneeId') ? parseInt(c.req.query('anneeId')!) : undefined;
+
+  const data = await service.getAllCourses(role as string, institutIds, classeId, anneeId)
   return c.json({ success: true, data })
 })
-
 structureRoutes.post('/courses', requireRole(['ADMIN']), zValidator('json', courseSchema), async (c) => {
   const payload = c.req.valid('json')
   const data = await service.createCourse(payload)

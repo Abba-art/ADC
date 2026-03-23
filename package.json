@@ -9,6 +9,8 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.19.11",
+    "@hono/swagger-ui": "^0.6.1",
+    "@hono/zod-openapi": "^1.2.3",
     "@hono/zod-validator": "^0.7.6",
     "@libsql/client": "^0.17.2",
     "@prisma/adapter-libsql": "^7.5.0",

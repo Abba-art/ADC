@@ -4,9 +4,14 @@ import { sign } from 'hono/jwt'
 import { setCookie } from 'hono/cookie'
 import { loginSchema, registerSchema } from '../schemas/auth.schema.js'
 import { AuthService } from '../services/auth.service.js'
+import { authMiddleware } from '../middleware/auth.middleware.js';
 import { HTTPException } from 'hono/http-exception'
 
-const authRoutes = new Hono()
+type Variables = {
+  user: { id: string; role: string | { libelle: string } }
+}
+
+const authRoutes = new Hono<{ Variables: Variables }>()
 const service = new AuthService()
 
 authRoutes.post('/register', zValidator('json', registerSchema), async (c) => {
@@ -27,7 +32,7 @@ authRoutes.post('/login', zValidator('json', loginSchema), async (c) => {
   const payload = {
     id: user.id,
     role: user.role,
-    exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24 * 14) // 14 jours
+    exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24 * 14) 
   }
 
   const secret = process.env.JWT_SECRET
@@ -41,7 +46,7 @@ authRoutes.post('/login', zValidator('json', loginSchema), async (c) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'Strict',
-    maxAge: 60 * 60 * 24 * 14, // 14 jours
+    maxAge: 60 * 60 * 24 * 14, 
     path: '/'
   })
 
@@ -51,5 +56,23 @@ authRoutes.post('/login', zValidator('json', loginSchema), async (c) => {
     data: user
   }, 200)
 })
+
+authRoutes.get('/me', authMiddleware, async (c) => {
+  const payload = c.get('user');
+    const user = await service.getMe(payload.id); 
+    return c.json({ success: true, data: user }, 200); 
+});
+
+authRoutes.post('/logout', async (c) => {
+  setCookie(c, 'token', '', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'Strict',
+    maxAge: 0, 
+    path: '/',
+  });
+
+  return c.json({ success: true, message: "Déconnexion réussie" }, 200);
+});
 
 export default authRoutes

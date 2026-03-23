@@ -78,7 +78,6 @@ export class AuthService {
       throw new HTTPException(401, { message: 'Identifiants incorrects' })
     }
 
-    // On ne renvoie **jamais** le mot de passe
     return {
       id: user.id,
       nom: user.nom,
@@ -86,5 +85,26 @@ export class AuthService {
       email: user.email,
       role: user.role.libelle
     }
+  }
+  
+  async getMe(id: string) {
+    const user = await prisma.utilisateur.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        nom: true,
+        prenom: true,
+        email: true,
+        role: { select: { libelle: true } },
+        statut: { select: { libelle: true, quotaHeureMax: true, quotaPeriode: true } },
+        instituts: { select: { id: true, nom: true } },
+        deletedAt: true 
+      }
+    });
+
+    if (!user) throw new HTTPException(404, { message: "Utilisateur introuvable" });
+    if (user.deletedAt) throw new HTTPException(401, { message: "Ce compte a été désactivé" });
+
+    return user;
   }
 }
