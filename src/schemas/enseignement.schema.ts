@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 export const assignationSchema = z.object({
-  utilisateurId: z.string().uuid('ID professeur invalide'),
+  utilisateurId: z.uuid('ID professeur invalide'),
   courseId: z.uuid('ID du cours invalide'),
   motif: z.string().max(200).optional(),
 })

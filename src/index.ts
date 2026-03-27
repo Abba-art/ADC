@@ -11,12 +11,13 @@ import enseignementRoutes from './routes/enseignement.routes.js'
 import statutRoutes from './routes/statut.routes.js'
 import institutRoutes from './routes/institut.routes.js'
 import dashboardRoutes from './routes/dashboard.routes.js'
+import referentielRoutes from './routes/referentiel.routes.js'
 
 const app = new Hono()
 
 app.use('*', logger())
 app.use('*', cors({
-  origin: 'http://localhost:5173', 
+  origin: 'http://localhost:3001', 
   credentials: true,
 }))
 
@@ -47,6 +48,7 @@ app.route('/utilisateurs', utilisateurRoutes)
 app.route('/enseignements', enseignementRoutes)
 app.route('/statuts', statutRoutes)
 app.route('/instituts', institutRoutes)
+app.route('/referentiel', referentielRoutes)
 app.route('/dashboard', dashboardRoutes)
 const port = 3000
 console.log(`Serveur démarré sur http://localhost:${port}`)

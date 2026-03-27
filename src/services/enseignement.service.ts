@@ -176,11 +176,11 @@ export class EnseignementService {
     });
   }
 
-  // 2. Vue pour le Chef d'Établissement (Ce qu'il doit valider)
-  async getPropositionsEnAttente(role: string, institutIds: number[]) {
+async getPropositionsEnAttente(role: string, institutIds: number[]) {
     const where: any = { estActif: true, statutValidation: 'PROPOSITION' };
     
-    if (role === 'CHEF_ETABLISSEMENT' && institutIds.length > 0) {
+    // 🔥 CORRECTION : Filtrage pour les deux chefs
+    if ((role === 'CHEF_ETABLISSEMENT' || role === 'CHEF_DEPARTEMENT') && institutIds.length > 0) {
       where.course = { classe: { filiere: { instituts: { some: { id: { in: institutIds } } } } } };
     }
 

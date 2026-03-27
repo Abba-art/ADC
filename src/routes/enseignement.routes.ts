@@ -83,7 +83,7 @@ enseignementRoutes.patch(
     return c.json({ success: true, message: `Proposition ${statut}`, data })
   }
 )
-enseignementRoutes.get('/propositions', requireRole(['ADMIN', 'CHEF_ETABLISSEMENT']), async (c) => {
+enseignementRoutes.get('/propositions', requireRole(['ADMIN', 'CHEF_ETABLISSEMENT', 'CHEF_DEPARTEMENT']), async (c) => {
   const user = c.get('user');
   const role = typeof user.role === 'object' && user.role !== null ? (user.role as any).libelle : user.role;
   const institutIds = c.get('institutIds') || [];

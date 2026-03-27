@@ -6,6 +6,7 @@ import { institutGuard } from '../middleware/institut.middleware.js'
 import { UtilisateurService } from '../services/utilisateur.service.js'
 import { z } from 'zod'
 import { HTTPException } from 'hono/http-exception'
+import prisma from '../lib/prisma.js'
 
 type Variables = {
   user: { id: string; role: string | { libelle: string } }
@@ -34,9 +35,18 @@ utilisateurRoutes.get('/', requireRole(['ADMIN', 'CHEF_ETABLISSEMENT', 'CHEF_DEP
   return c.json({ success: true, count: data.length, data })
 })
 
-utilisateurRoutes.get('/:id', requireRole(['ADMIN', 'CHEF_ETABLISSEMENT', 'CHEF_DEPARTEMENT']), async (c) => {
+// ──── RÉCUPÉRER UN UTILISATEUR ────
+utilisateurRoutes.get('/:id', requireRole(['ADMIN', 'CHEF_ETABLISSEMENT', 'CHEF_DEPARTEMENT', 'PROFESSEUR']), async (c) => {
   const id = c.req.param('id')
   if (!id) throw new HTTPException(400, { message: 'ID utilisateur manquant' })
+
+  const currentUser = c.get('user')
+  const role = typeof currentUser.role === 'object' ? (currentUser.role as any).libelle : currentUser.role;
+
+  // 🔥 SÉCURITÉ : Un professeur ne peut requêter QUE son propre profil !
+  if (role === 'PROFESSEUR' && currentUser.id !== id) {
+    throw new HTTPException(403, { message: "Accès interdit. Vous ne pouvez consulter que votre propre profil." })
+  }
 
   const withCharge = c.req.query('withCharge') === 'true'
   const data = await service.getUtilisateurById(id, withCharge)
@@ -69,11 +79,59 @@ utilisateurRoutes.patch(
   }
 )
 
-utilisateurRoutes.delete('/:id', requireRole(['ADMIN']), async (c) => {
-  const id = c.req.param('id')
-  if(!id) throw new HTTPException(400, {message:"veuillez entrer l'id"})
-  await service.softDelete(id)
-  return c.json({ success: true, message: 'Utilisateur désactivé (soft delete)' })
-})
+utilisateurRoutes.delete('/:id', requireRole(['ADMIN', 'CHEF_ETABLISSEMENT', 'CHEF_DEPARTEMENT']), async (c) => {
+  const id = c.req.param('id');
+  if(!id) throw new HTTPException(400, {message:"veuillez entrer l'id"});
 
-export default utilisateurRoutes
+  const currentUser = c.get('user');
+  const role = typeof currentUser.role === 'object' ? (currentUser.role as any).libelle : currentUser.role;
+
+  // 🔥 SÉCURITÉ : Si c'est un Chef, il ne peut désactiver QU'UN PROFESSEUR
+  if (role !== 'ADMIN') {
+    const targetUser = await prisma.utilisateur.findUnique({ where: { id }, include: { role: true } });
+    if (targetUser?.role?.libelle !== 'PROFESSEUR') {
+      throw new HTTPException(403, { message: "Vous n'êtes autorisé à désactiver que les professeurs." });
+    }
+  }
+
+  await service.softDelete(id);
+  return c.json({ success: true, message: 'Utilisateur déplacé vers la corbeille' });
+});
+
+utilisateurRoutes.post('/:id/instituts', requireRole(['ADMIN']), async (c) => {
+  const userId = c.req.param('id');
+  const { institutId } = await c.req.json();
+
+  // On utilise la syntaxe "connect" de Prisma pour la relation Many-to-Many
+  await prisma.utilisateur.update({
+    where: { id: userId },
+    data: {
+      instituts: {
+        connect: { id: institutId }
+      }
+    }
+  });
+
+  return c.json({ success: true, message: "Institut assigné avec succès" });
+});
+
+utilisateurRoutes.post('/:id/restore', requireRole(['ADMIN', 'CHEF_ETABLISSEMENT', 'CHEF_DEPARTEMENT']), async (c) => {
+  const id = c.req.param('id');
+  if(!id) throw new HTTPException(400, {message:"veuillez entrer l'id"});
+
+  const currentUser = c.get('user');
+  const role = typeof currentUser.role === 'object' ? (currentUser.role as any).libelle : currentUser.role;
+
+  // 🔥 SÉCURITÉ : Même logique pour la restauration
+  if (role !== 'ADMIN') {
+    const targetUser = await prisma.utilisateur.findUnique({ where: { id }, include: { role: true } });
+    if (targetUser?.role?.libelle !== 'PROFESSEUR') {
+      throw new HTTPException(403, { message: "Vous n'êtes autorisé à restaurer que les professeurs." });
+    }
+  }
+
+  await service.restoreUser(id); // Appel de la méthode créée à l'étape 2
+  return c.json({ success: true, message: 'Utilisateur réactivé avec succès' });
+});
+
+export default utilisateurRoutes;

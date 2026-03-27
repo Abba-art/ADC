@@ -5,20 +5,24 @@ import type z from 'zod'
 
 export class StructureService {
   // ───────────── Filières ─────────────
-  async createFiliere(nom: string) {
+  async createFiliere(nom: string, institutId: number) {
     const normalized = nom.trim().toUpperCase()
     const existing = await prisma.filiere.findFirst({ where: { nom: normalized } })
-    if (existing) {
-      throw new HTTPException(409, { message: `La filière "${normalized}" existe déjà` })
-    }
+    if (existing) throw new HTTPException(409, { message: `La filière "${normalized}" existe déjà` })
+
     return prisma.filiere.create({
-      data: { nom: normalized },
+      data: {
+        nom: normalized,
+        instituts: { connect: { id: institutId } }
+      },
     })
   }
-
   async getAllFilieres() {
     return prisma.filiere.findMany({
-      include: { _count: { select: { classes: true, matieres: true } } },
+      include: {
+        instituts: { select: { id: true, nom: true } },
+        _count: { select: { classes: true, matieres: true } }
+      },
       orderBy: { nom: 'asc' },
     })
   }
@@ -61,13 +65,13 @@ export class StructureService {
     })
   }
 
-async getAllClasses(role: string, institutIds: number[] = [], filiereId?: number) {
+  async getAllClasses(role: string, institutIds: number[] = [], filiereId?: number) {
     const where: any = { deletedAt: null }
 
     if ((role === 'CHEF_DEPARTEMENT' || role === 'CHEF_ETABLISSEMENT') && institutIds.length > 0) {
       where.filiere = { instituts: { some: { id: { in: institutIds } } } }
     }
-    
+
     if (filiereId) where.filiereId = filiereId; // NOUVEAU FILTRE DYNAMIQUE
 
     return prisma.classe.findMany({
@@ -116,14 +120,14 @@ async getAllClasses(role: string, institutIds: number[] = [], filiereId?: number
     })
   }
 
-async getAllMatieres(role: string, institutIds: number[] = [], filiereId?: number) {
+  async getAllMatieres(role: string, institutIds: number[] = [], filiereId?: number) {
     const where: any = {}
 
     if ((role === 'CHEF_DEPARTEMENT' || role === 'CHEF_ETABLISSEMENT') && institutIds.length > 0) {
       where.filiere = { instituts: { some: { id: { in: institutIds } } } }
     }
 
-    if (filiereId) where.filiereId = filiereId; 
+    if (filiereId) where.filiereId = filiereId;
 
     return prisma.matiere.findMany({
       where,
@@ -156,24 +160,62 @@ async getAllMatieres(role: string, institutIds: number[] = [], filiereId?: numbe
     })
   }
 
-async getAllCourses(role: string, institutIds: number[] = [], classeId?: number, anneeId?: number) {
+  async getAllCourses(role: string, institutIds: number[] = [], classeId?: number, anneeId?: number, nonAssigne?: boolean) {
     const where: any = { deletedAt: null }
 
     if ((role === 'CHEF_DEPARTEMENT' || role === 'CHEF_ETABLISSEMENT') && institutIds.length > 0) {
       where.classe = { filiere: { instituts: { some: { id: { in: institutIds } } } } }
     }
 
-    if (classeId) where.classeId = classeId; // NOUVEAU FILTRE DYNAMIQUE
-    if (anneeId) where.anneeId = anneeId;    // NOUVEAU FILTRE DYNAMIQUE
+    if (classeId) where.classeId = classeId;
+    if (anneeId) where.anneeId = anneeId;
+
+    // NOUVEAU : On filtre pour n'avoir que les cours sans enseignant actif
+    if (nonAssigne) {
+      where.enseignements = {
+        none: { estActif: true }
+      }
+    }
 
     return prisma.course.findMany({
       where,
       include: {
-        matiere: { select: { code: true, nom: true, semestre: true } },
+        matiere: { select: { code: true, nom: true, semestre: true, credits: true } }, // Ajout des crédits utiles pour le front
         classe: { select: { code: true } },
         annee: { select: { libelle: true } },
       },
       orderBy: { createdAt: 'desc' },
     })
+
+  }
+  // --- MÉTHODES DE MISE À JOUR (PATCH) ---
+  async updateFiliere(id: number, nom: string, institutId?: number) {
+    const dataToUpdate: any = { nom: nom.trim().toUpperCase() };
+    if (institutId) {
+      // "set" remplace les anciens instituts par le nouveau (simule du One-To-Many)
+      dataToUpdate.instituts = { set: [{ id: institutId }] };
+    }
+    return prisma.filiere.update({ where: { id }, data: dataToUpdate });
+  }
+
+  async updateNiveau(id: number, libelle: string) {
+    return prisma.niveau.update({ where: { id }, data: { libelle: libelle.trim() } });
+  }
+
+  async updateClasse(id: number, data: { code?: string, filiereId?: number, niveauId?: number }) {
+    if (data.code) data.code = data.code.trim().toUpperCase();
+    return prisma.classe.update({ where: { id }, data });
+  }
+
+  async updateMatiere(id: number, data: any) {
+    return prisma.matiere.update({ where: { id }, data });
+  }
+
+  async deleteNiveau(id: number) {
+    return prisma.niveau.delete({ where: { id } });
+  }
+
+  async deleteMatiere(id: number) {
+    return prisma.matiere.delete({ where: { id } });
   }
 }
