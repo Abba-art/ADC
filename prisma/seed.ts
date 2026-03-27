@@ -4,13 +4,12 @@ import bcrypt from 'bcrypt'
 const prisma = new PrismaClient()
 
 async function main() {
-  console.log('🌱 Début du seeding...')
+  console.log('🌱 Début du seeding des données de référence...')
 
   // ───────────────────────────────────────────────
-  // Rôles (Ajout de CHEF_ETABLISSEMENT)
+  // 1. RÔLES SYSTÈME
   // ───────────────────────────────────────────────
   const roles = ['ADMIN', 'CHEF_ETABLISSEMENT', 'CHEF_DEPARTEMENT', 'PROFESSEUR']
-
   for (const libelle of roles) {
     await prisma.role.upsert({
       where: { libelle },
@@ -20,14 +19,13 @@ async function main() {
   }
 
   // ───────────────────────────────────────────────
-  // Statuts (avec enum QuotaPeriode typé correctement)
+  // 2. STATUTS ET QUOTAS
   // ───────────────────────────────────────────────
   const statuts = [
     { libelle: 'PERMANENT', quotaHeureMax: 360, quotaPeriode: QuotaPeriode.ANNEE },
     { libelle: 'VACATAIRE', quotaHeureMax: 96, quotaPeriode: QuotaPeriode.ANNEE },
     { libelle: 'VACATAIRE_SEMESTRE', quotaHeureMax: 48, quotaPeriode: QuotaPeriode.SEMESTRE },
   ]
-
   for (const s of statuts) {
     await prisma.statut.upsert({
       where: { libelle: s.libelle },
@@ -37,14 +35,13 @@ async function main() {
   }
 
   // ───────────────────────────────────────────────
-  // Niveaux (pas de @unique sur libelle → findFirst + create)
+  // 3. NIVEAUX D'ÉTUDE
   // ───────────────────────────────────────────────
   const niveauxLibelles = [
     'BTS 1', 'BTS 2',
     'Licence 1', 'Licence 2', 'Licence 3',
     'Master 1', 'Master 2'
   ]
-
   for (const libelle of niveauxLibelles) {
     const existing = await prisma.niveau.findFirst({ where: { libelle } })
     if (!existing) {
@@ -53,14 +50,13 @@ async function main() {
   }
 
   // ───────────────────────────────────────────────
-  // Instituts de démonstration
+  // 4. INSTITUTS DE BASE
   // ───────────────────────────────────────────────
   const instituts = [
-    { nom: 'ISTA Douala', adresse: 'Douala, Bonanjo' },
-    { nom: 'ISA Yaoundé', adresse: 'Yaoundé, Bastos' },
-    { nom: 'Institut Universitaire du Golfe', adresse: 'Douala, Bassa' },
+    { nom: 'ISTA', adresse: 'Douala, Bonanjo' },
+    { nom: 'ISA', adresse: 'Yaoundé, Bastos' },
+    { nom: 'ESG', adresse: 'Douala, Bassa' },
   ]
-
   for (const inst of instituts) {
     await prisma.institut.upsert({
       where: { nom: inst.nom },
@@ -70,37 +66,39 @@ async function main() {
   }
 
   // ───────────────────────────────────────────────
-  // Création d'un Admin par défaut (Optionnel mais recommandé)
+  // 5. COMPTE ADMINISTRATEUR PRINCIPAL
   // ───────────────────────────────────────────────
   const adminRole = await prisma.role.findUnique({ where: { libelle: 'ADMIN' } })
   const permanentStatut = await prisma.statut.findUnique({ where: { libelle: 'PERMANENT' } })
 
   if (adminRole && permanentStatut) {
-    const adminEmail = 'admin@mootiv.africa' // À adapter selon ton projet
+    const adminEmail = 'iabba1374@gmail.com'
     const existingAdmin = await prisma.utilisateur.findUnique({ where: { email: adminEmail } })
 
     if (!existingAdmin) {
-      const hashedPassword = await bcrypt.hash('admin123', 10)
+      const hashedPassword = await bcrypt.hash('Abba2006', 10)
       await prisma.utilisateur.create({
         data: {
-          nom: 'Admin',
-          prenom: 'Système',
+          nom: 'Djibril',
+          prenom: 'Abba',
           email: adminEmail,
           mdp: hashedPassword,
           idRole: adminRole.id,
           idStatut: permanentStatut.id,
         }
       })
-      console.log(`✅ Utilisateur Admin créé: ${adminEmail} (mdp: admin123)`)
+      console.log(`✅ Administrateur créé avec succès : ${adminEmail}`)
+    } else {
+      console.log(`ℹ️ L'Administrateur ${adminEmail} existe déjà.`)
     }
   }
 
-  console.log('✅ Seeding terminé avec succès !')
+  console.log('✅ Base de données initialisée ! Le terrain est prêt pour tes tests Frontend.')
 }
 
 main()
   .catch(e => {
-    console.error('Erreur seeding :', e)
+    console.error('❌ Erreur lors du seeding :', e)
     process.exit(1)
   })
   .finally(async () => await prisma.$disconnect())
