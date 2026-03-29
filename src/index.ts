@@ -17,7 +17,7 @@ const app = new Hono()
 
 app.use('*', logger())
 app.use('*', cors({
-  origin: 'http://localhost:3001', 
+  origin: 'https://adc-back.vercel.app', 
   credentials: true,
 }))
 
