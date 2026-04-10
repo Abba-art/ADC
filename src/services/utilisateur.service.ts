@@ -2,11 +2,13 @@ import prisma from '../lib/prisma.js'
 import { HTTPException } from 'hono/http-exception'
 
 export class UtilisateurService {
-// 1. Modifie cette méthode pour enlever la condition "deletedAt: null"
-async getProfesseursActifs() {
+
+  // 🔥 CORRECTION : Le Chef ne doit recevoir QUE les cours validés pour calculer la jauge exacte
+  async getProfesseursActifs(anneeId?: number) {
     return prisma.utilisateur.findMany({
       where: {
         role: { libelle: { in: ['PROFESSEUR', 'CHEF_DEPARTEMENT', 'CHEF_ETABLISSEMENT'] } },
+        deletedAt: null // Un prof désactivé ne doit pas être assignable
       },
       select: {
         id: true, nom: true, prenom: true, email: true,
@@ -14,20 +16,23 @@ async getProfesseursActifs() {
         statut: { select: { libelle: true, quotaHeureMax: true, quotaPeriode: true } },
         instituts: { select: { id: true, nom: true } },
         role: { select: { libelle: true } },
-        // 🔥 AJOUT CRUCIAL : On récupère les cours validés pour calculer la charge !
-        enseignements: {
-          where: { OR: [{ statutValidation: 'VALIDE' }, { estActif: true }] },
-          select: { course: { select: { matiere: { select: { credits: true } } } } }
+        attributions: {
+          where: { 
+            estActif: true,
+            statutValidation: 'VALIDE', // <-- STRICTEMENT VALIDE ICI
+            ...(anneeId ? { anneeId: anneeId } : {}) 
+          },
+          select: { matiere: { select: { credits: true } } }
         }
       },
       orderBy: [{ nom: 'asc' }, { prenom: 'asc' }],
     })
   }
-  // 2. Ajoute cette petite méthode tout en bas de ta classe
+
   async restoreUser(id: string) {
     return prisma.utilisateur.update({
       where: { id },
-      data: { deletedAt: null }, // On enlève la date de suppression
+      data: { deletedAt: null }, 
     })
   }
 
@@ -41,7 +46,6 @@ async getProfesseursActifs() {
       where.instituts = { some: { id: { in: currentUserInstitutIds } } }
     }
 
-    // Un Admin voit tout le monde
     return prisma.utilisateur.findMany({
       where,
       include: {
@@ -53,7 +57,8 @@ async getProfesseursActifs() {
     })
   }
 
-async getUtilisateurById(id: string, withCharge = false) {
+  // 🔥 CORRECTION : Le profil complet ramène TOUTES les attributions actives (Validées, Rejetées, En attente)
+  async getUtilisateurById(id: string, withCharge = false, anneeId?: number) {
     const user = await prisma.utilisateur.findUnique({
       where: { id },
       include: {
@@ -61,21 +66,15 @@ async getUtilisateurById(id: string, withCharge = false) {
         statut: true,
         instituts: true,
         ...(withCharge && {
-          enseignements: {
+          attributions: {
+            where: { 
+              estActif: true, 
+              ...(anneeId ? { anneeId: anneeId } : {}) 
+            },
             include: {
-              course: { 
-                include: { 
-                  matiere: true, 
-                  annee: true,
-                  classe: {
-                    include: {
-                      filiere: {
-                        include: { instituts: true } 
-                      }
-                    }
-                  }
-                } 
-              },
+              matiere: true,
+              annee: true,
+              classe: true
             },
           },
         }),
@@ -104,9 +103,19 @@ async getUtilisateurById(id: string, withCharge = false) {
   }
 
   async softDelete(id: string) {
+    const userExists = await prisma.utilisateur.findUnique({ where: { id } });
+    if (!userExists) throw new HTTPException(404, { message: "L'utilisateur n'existe pas." });
+
     return prisma.utilisateur.update({
       where: { id },
       data: { deletedAt: new Date() },
+    });
+  }
+
+  async getDeletedUsers() {
+    return prisma.utilisateur.findMany({
+      where: { NOT: { deletedAt: null } },
+      include: { role: true, statut: true }
     })
   }
 }

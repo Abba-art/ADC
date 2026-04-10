@@ -17,11 +17,13 @@
     "bcrypt": "^6.0.0",
     "dotenv": "^17.3.1",
     "hono": "^4.12.8",
+    "pdfkit-table": "^0.1.99",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
     "@types/node": "^20.11.17",
+    "@types/pdfkit": "^0.17.5",
     "prisma": "^6.19.2",
     "tsx": "^4.7.1",
     "typescript": "^5.8.3"

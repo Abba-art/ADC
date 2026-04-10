@@ -11,12 +11,18 @@ export class InstitutService {
     })
   }
 
-  async getAllInstituts() {
-    return prisma.institut.findMany({
-      include: { _count: { select: { utilisateurs: true, filieres: true } } },
-      orderBy: { nom: 'asc' },
-    })
-  }
+async getAllInstituts() {
+  return prisma.institut.findMany({
+    include: {
+      _count: {
+        select: { 
+          utilisateurs: true, 
+          departements: true 
+        }
+      }
+    }
+  })
+}
 
   async updateInstitut(id: number, data: { nom?: string; adresse?: string }) {
     return prisma.institut.update({

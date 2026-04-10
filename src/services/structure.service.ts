@@ -1,32 +1,36 @@
 import prisma from '../lib/prisma.js'
 import { HTTPException } from 'hono/http-exception'
-import type { courseSchema, matiereSchema } from '../schemas/structure.schema.js'
+import type { matiereSchema } from '../schemas/structure.schema.js'
 import type z from 'zod'
 
 export class StructureService {
-  // ───────────── Filières ─────────────
-  async createFiliere(nom: string, institutId: number) {
-    const normalized = nom.trim().toUpperCase()
-    const existing = await prisma.filiere.findFirst({ where: { nom: normalized } })
-    if (existing) throw new HTTPException(409, { message: `La filière "${normalized}" existe déjà` })
 
-    return prisma.filiere.create({
-      data: {
-        nom: normalized,
-        instituts: { connect: { id: institutId } }
-      },
-    })
-  }
-  async getAllFilieres() {
-    return prisma.filiere.findMany({
+// Remplacer createDepartement
+async createDepartement(nom: string, institutId: number, chefId: string) {
+  const normalized = nom.trim().toUpperCase()
+  const existing = await prisma.departement.findFirst({ where: { nom: normalized } })
+  if (existing) throw new HTTPException(409, { message: `Le département "${normalized}" existe déjà` })
+
+  return prisma.departement.create({
+    data: {
+      nom: normalized,
+      institutId: institutId,
+      utilisateurs: { connect: { id: chefId } } // 🔥 ON RELIE LE CHEF ICI
+    },
+  })
+}
+
+// Remplacer getAllDepartements
+async getAllDepartements() {
+    return prisma.departement.findMany({
       include: {
-        instituts: { select: { id: true, nom: true } },
+        institut: { select: { id: true, nom: true } },
+        utilisateurs: { select: { id: true, nom: true, prenom: true } }, 
         _count: { select: { classes: true, matieres: true } }
       },
       orderBy: { nom: 'asc' },
     })
   }
-
   // ───────────── Niveaux ─────────────
   async createNiveau(libelle: string) {
     const normalized = libelle.trim()
@@ -42,48 +46,48 @@ export class StructureService {
   }
 
   // ───────────── Classes ─────────────
-  async createClasse(code: string, filiereId: number, niveauId: number) {
+  async createClasse(code: string, departementId: number, niveauId: number) {
     const normalizedCode = code.trim().toUpperCase()
 
-    // Vérification existence filière & niveau
-    const filiere = await prisma.filiere.findUnique({ where: { id: filiereId } })
-    if (!filiere) throw new HTTPException(404, { message: 'Filière introuvable' })
+    const dep = await prisma.departement.findUnique({ where: { id: departementId } })
+    if (!dep) throw new HTTPException(404, { message: 'Département introuvable' })
 
     const niveau = await prisma.niveau.findUnique({ where: { id: niveauId } })
     if (!niveau) throw new HTTPException(404, { message: 'Niveau introuvable' })
 
     const existing = await prisma.classe.findFirst({
-      where: { code: normalizedCode, filiereId, niveauId },
+      where: { code: normalizedCode, departementId, niveauId },
     })
     if (existing) {
-      throw new HTTPException(409, { message: `Cette classe existe déjà dans cette filière/niveau` })
+      throw new HTTPException(409, { message: `Cette classe existe déjà dans ce département/niveau` })
     }
 
     return prisma.classe.create({
-      data: { code: normalizedCode, filiereId, niveauId },
-      include: { filiere: { select: { nom: true } }, niveau: true },
+      data: { code: normalizedCode, departementId, niveauId },
+      include: { departement: { select: { nom: true } }, niveau: true },
     })
   }
 
-  async getAllClasses(role: string, institutIds: number[] = [], filiereId?: number) {
+  async getAllClasses(role: string, institutIds: number[] = [], departementId?: number) {
     const where: any = { deletedAt: null }
 
     if ((role === 'CHEF_DEPARTEMENT' || role === 'CHEF_ETABLISSEMENT') && institutIds.length > 0) {
-      where.filiere = { instituts: { some: { id: { in: institutIds } } } }
+      where.departement = { institutId: { in: institutIds } }
     }
 
-    if (filiereId) where.filiereId = filiereId; // NOUVEAU FILTRE DYNAMIQUE
+    if (departementId) where.departementId = departementId;
 
     return prisma.classe.findMany({
       where,
       include: {
-        filiere: { select: { nom: true } },
+        departement: { select: { nom: true } },
         niveau: { select: { libelle: true } },
-        _count: { select: { courses: true } },
+        _count: { select: { attributions: true } }, // On compte les attributions maintenant
       },
-      orderBy: [{ filiere: { nom: 'asc' } }, { code: 'asc' }],
+      orderBy: [{ departement: { nom: 'asc' } }, { code: 'asc' }],
     })
   }
+
   // ───────────── Années académiques ─────────────
   async createAnneeAcademique(libelle: string) {
     const normalized = libelle.trim()
@@ -100,115 +104,75 @@ export class StructureService {
     })
   }
 
-  // ───────────── Matières ─────────────
-  async createMatiere(data: z.infer<typeof matiereSchema>) {
-    const { code, nom, credits, semestre, filiereId } = data
+  // ───────────── Matières (Avec gestion Many-to-Many) ─────────────
+  async createMatiere(data: any) {
+    const { code, nom, credits, semestre, departementId } = data
 
-    const filiere = await prisma.filiere.findUnique({ where: { id: filiereId } })
-    if (!filiere) throw new HTTPException(404, { message: 'Filière introuvable' })
-
-    const existing = await prisma.matiere.findFirst({
-      where: { code, filiereId },
-    })
+    const existing = await prisma.matiere.findUnique({ where: { code } })
     if (existing) {
-      throw new HTTPException(409, { message: `Matière avec code ${code} existe déjà dans cette filière` })
+      throw new HTTPException(409, { message: `Une matière avec le code ${code} existe déjà` })
     }
 
     return prisma.matiere.create({
-      data: { code, nom, credits, semestre, filiereId },
-      include: { filiere: { select: { nom: true } } },
+      data: { 
+        code, 
+        nom, 
+        credits, 
+        semestre, 
+        departements: { connect: { id: departementId } } // Utilise la relation Many-to-Many
+      },
+      include: { departements: true },
     })
   }
 
-  async getAllMatieres(role: string, institutIds: number[] = [], filiereId?: number) {
+  async getAllMatieres(role: string, institutIds: number[] = [], departementId?: number) {
     const where: any = {}
 
     if ((role === 'CHEF_DEPARTEMENT' || role === 'CHEF_ETABLISSEMENT') && institutIds.length > 0) {
-      where.filiere = { instituts: { some: { id: { in: institutIds } } } }
+      where.departements = { some: { institutId: { in: institutIds } } }
     }
 
-    if (filiereId) where.filiereId = filiereId;
+    if (departementId) {
+        where.departements = { some: { id: departementId } }
+    }
 
     return prisma.matiere.findMany({
       where,
-      include: { filiere: { select: { nom: true } } },
-      orderBy: [{ filiere: { nom: 'asc' } }, { semestre: 'asc' }, { code: 'asc' }],
-    })
-  }
-  // ───────────── Courses (Cours = Matière + Classe + Année) ─────────────
-  async createCourse(data: z.infer<typeof courseSchema>) {
-    const { matiereId, classeId, anneeId } = data
-
-    // Vérifications existence
-    const matiere = await prisma.matiere.findUnique({ where: { id: matiereId } })
-    if (!matiere) throw new HTTPException(404, { message: 'Matière introuvable' })
-
-    const classe = await prisma.classe.findUnique({ where: { id: classeId } })
-    if (!classe) throw new HTTPException(404, { message: 'Classe introuvable' })
-
-    const annee = await prisma.anneeAcademique.findUnique({ where: { id: anneeId } })
-    if (!annee) throw new HTTPException(404, { message: 'Année académique introuvable' })
-
-    // Unicité déjà gérée par @@unique dans Prisma → on laisse Prisma lever l'erreur si doublon
-    return prisma.course.create({
-      data: { matiereId, classeId, anneeId },
-      include: {
-        matiere: { select: { code: true, nom: true, semestre: true } },
-        classe: { select: { code: true } },
-        annee: { select: { libelle: true } },
-      },
+      include: { departements: { select: { nom: true } } },
+      orderBy: { nom: 'asc' },
     })
   }
 
-  async getAllCourses(role: string, institutIds: number[] = [], classeId?: number, anneeId?: number, nonAssigne?: boolean) {
-    const where: any = { deletedAt: null }
-
-    if ((role === 'CHEF_DEPARTEMENT' || role === 'CHEF_ETABLISSEMENT') && institutIds.length > 0) {
-      where.classe = { filiere: { instituts: { some: { id: { in: institutIds } } } } }
-    }
-
-    if (classeId) where.classeId = classeId;
-    if (anneeId) where.anneeId = anneeId;
-
-    // NOUVEAU : On filtre pour n'avoir que les cours sans enseignant actif
-    if (nonAssigne) {
-      where.enseignements = {
-        none: { estActif: true }
-      }
-    }
-
-    return prisma.course.findMany({
-      where,
-      include: {
-        matiere: { select: { code: true, nom: true, semestre: true, credits: true } }, // Ajout des crédits utiles pour le front
-        classe: { select: { code: true } },
-        annee: { select: { libelle: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    })
-
-  }
-  // --- MÉTHODES DE MISE À JOUR (PATCH) ---
-  async updateFiliere(id: number, nom: string, institutId?: number) {
+  // ───────────── Méthodes de mise à jour ─────────────
+  async updateDepartement(id: number, nom: string, institutId?: number) {
     const dataToUpdate: any = { nom: nom.trim().toUpperCase() };
-    if (institutId) {
-      // "set" remplace les anciens instituts par le nouveau (simule du One-To-Many)
-      dataToUpdate.instituts = { set: [{ id: institutId }] };
-    }
-    return prisma.filiere.update({ where: { id }, data: dataToUpdate });
+    if (institutId) dataToUpdate.institutId = institutId;
+    
+    return prisma.departement.update({ where: { id }, data: dataToUpdate });
   }
 
-  async updateNiveau(id: number, libelle: string) {
-    return prisma.niveau.update({ where: { id }, data: { libelle: libelle.trim() } });
-  }
-
-  async updateClasse(id: number, data: { code?: string, filiereId?: number, niveauId?: number }) {
+  async updateClasse(id: number, data: { code?: string, departementId?: number, niveauId?: number }) {
     if (data.code) data.code = data.code.trim().toUpperCase();
     return prisma.classe.update({ where: { id }, data });
   }
 
   async updateMatiere(id: number, data: any) {
+    // Si on change le département, on utilise "set" pour la relation Many-to-Many
+    if (data.departementId) {
+        const { departementId, ...rest } = data;
+        return prisma.matiere.update({
+            where: { id },
+            data: {
+                ...rest,
+                departements: { set: [{ id: departementId }] }
+            }
+        });
+    }
     return prisma.matiere.update({ where: { id }, data });
+  }
+
+  async deleteDepartement(id: number) {
+    return prisma.departement.delete({ where: { id } });
   }
 
   async deleteNiveau(id: number) {

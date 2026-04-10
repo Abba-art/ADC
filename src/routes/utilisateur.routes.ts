@@ -7,6 +7,7 @@ import { UtilisateurService } from '../services/utilisateur.service.js'
 import { z } from 'zod'
 import { HTTPException } from 'hono/http-exception'
 import prisma from '../lib/prisma.js'
+import { ReportService } from '../services/report.service.js';
 
 type Variables = {
   user: { id: string; role: string | { libelle: string } }
@@ -20,12 +21,34 @@ utilisateurRoutes.use('*', authMiddleware)
 utilisateurRoutes.use('*', institutGuard)
 
 // ──── Accessible à tous (PROF + CHEFS + ADMIN) ────
+// 🔥 AJOUT : Accepte ?anneeId=X pour filtrer le volume horaire
 utilisateurRoutes.get('/professeurs', async (c) => {
-  const data = await service.getProfesseursActifs()
+  const anneeId = c.req.query('anneeId') ? Number(c.req.query('anneeId')) : undefined;
+  const data = await service.getProfesseursActifs(anneeId)
   return c.json({ success: true, data })
 })
 
-// ──── CHEFS & ADMIN (Filtrage auto par institut via le service) ────
+// Route pour le profil connecté
+utilisateurRoutes.get('/me', async (c) => {
+  const currentUser = c.get('user');
+  const anneeId = c.req.query('anneeId') ? Number(c.req.query('anneeId')) : undefined;
+  
+  const data = await service.getUtilisateurById(currentUser.id, true, anneeId);
+  return c.json({ success: true, data });
+})
+
+// Route pour télécharger le PDF du professeur connecté
+utilisateurRoutes.get('/me/export-charge', async (c) => {
+  const currentUser = c.get('user');
+  const reportService = new ReportService();
+  const pdfBuffer = await reportService.generateFicheEnseignantPdf(currentUser.id);
+
+  c.header('Content-Type', 'application/pdf');
+  c.header('Content-Disposition', `attachment; filename="Ma_Fiche_Charge.pdf"`);
+  return c.body(pdfBuffer as any);
+})
+
+// ──── CHEFS & ADMIN ────
 utilisateurRoutes.get('/', requireRole(['ADMIN', 'CHEF_ETABLISSEMENT', 'CHEF_DEPARTEMENT']), async (c) => {
   const user = c.get('user')
   const role = typeof user.role === 'object' ? user.role.libelle : user.role
@@ -33,6 +56,13 @@ utilisateurRoutes.get('/', requireRole(['ADMIN', 'CHEF_ETABLISSEMENT', 'CHEF_DEP
 
   const data = await service.getAllUtilisateurs(role, institutIds)
   return c.json({ success: true, count: data.length, data })
+})
+
+// 🔥 LA CORRECTION EST ICI : On place la route /deleted AVANT /:id
+// Sinon le routeur croit que "deleted" est un ID d'utilisateur !
+utilisateurRoutes.get('/deleted', requireRole(['ADMIN', 'CHEF_ETABLISSEMENT']), async (c) => {
+  const data = await service.getDeletedUsers();
+  return c.json({ success: true, data });
 })
 
 // ──── RÉCUPÉRER UN UTILISATEUR ────
@@ -43,13 +73,14 @@ utilisateurRoutes.get('/:id', requireRole(['ADMIN', 'CHEF_ETABLISSEMENT', 'CHEF_
   const currentUser = c.get('user')
   const role = typeof currentUser.role === 'object' ? (currentUser.role as any).libelle : currentUser.role;
 
-  // 🔥 SÉCURITÉ : Un professeur ne peut requêter QUE son propre profil !
   if (role === 'PROFESSEUR' && currentUser.id !== id) {
     throw new HTTPException(403, { message: "Accès interdit. Vous ne pouvez consulter que votre propre profil." })
   }
 
   const withCharge = c.req.query('withCharge') === 'true'
-  const data = await service.getUtilisateurById(id, withCharge)
+  const anneeId = c.req.query('anneeId') ? Number(c.req.query('anneeId')) : undefined;
+
+  const data = await service.getUtilisateurById(id, withCharge, anneeId)
   return c.json({ success: true, data })
 })
 
@@ -86,23 +117,25 @@ utilisateurRoutes.delete('/:id', requireRole(['ADMIN', 'CHEF_ETABLISSEMENT', 'CH
   const currentUser = c.get('user');
   const role = typeof currentUser.role === 'object' ? (currentUser.role as any).libelle : currentUser.role;
 
-  // 🔥 SÉCURITÉ : Si c'est un Chef, il ne peut désactiver QU'UN PROFESSEUR
+  // SÉCURITÉ RENFORCÉE
   if (role !== 'ADMIN') {
     const targetUser = await prisma.utilisateur.findUnique({ where: { id }, include: { role: true } });
-    if (targetUser?.role?.libelle !== 'PROFESSEUR') {
+    if (!targetUser) {
+      throw new HTTPException(404, { message: "Utilisateur introuvable." });
+    }
+    if (targetUser.role?.libelle !== 'PROFESSEUR') {
       throw new HTTPException(403, { message: "Vous n'êtes autorisé à désactiver que les professeurs." });
     }
   }
 
   await service.softDelete(id);
-  return c.json({ success: true, message: 'Utilisateur déplacé vers la corbeille' });
+  return c.json({ success: true, message: 'Utilisateur désactivé avec succès' });
 });
 
 utilisateurRoutes.post('/:id/instituts', requireRole(['ADMIN']), async (c) => {
   const userId = c.req.param('id');
   const { institutId } = await c.req.json();
 
-  // On utilise la syntaxe "connect" de Prisma pour la relation Many-to-Many
   await prisma.utilisateur.update({
     where: { id: userId },
     data: {
@@ -122,16 +155,34 @@ utilisateurRoutes.post('/:id/restore', requireRole(['ADMIN', 'CHEF_ETABLISSEMENT
   const currentUser = c.get('user');
   const role = typeof currentUser.role === 'object' ? (currentUser.role as any).libelle : currentUser.role;
 
-  // 🔥 SÉCURITÉ : Même logique pour la restauration
   if (role !== 'ADMIN') {
     const targetUser = await prisma.utilisateur.findUnique({ where: { id }, include: { role: true } });
-    if (targetUser?.role?.libelle !== 'PROFESSEUR') {
+    if (!targetUser) throw new HTTPException(404, { message: "Utilisateur introuvable." });
+    
+    if (targetUser.role?.libelle !== 'PROFESSEUR') {
       throw new HTTPException(403, { message: "Vous n'êtes autorisé à restaurer que les professeurs." });
     }
   }
 
-  await service.restoreUser(id); // Appel de la méthode créée à l'étape 2
+  await service.restoreUser(id); 
   return c.json({ success: true, message: 'Utilisateur réactivé avec succès' });
+});
+
+utilisateurRoutes.get('/:id/export-charge', requireRole(['ADMIN', 'CHEF_ETABLISSEMENT', 'CHEF_DEPARTEMENT', 'PROFESSEUR']), async (c) => {
+  const id = c.req.param('id');
+  const currentUser = c.get('user');
+
+  if (currentUser.role === 'PROFESSEUR' && currentUser.id !== id) {
+    throw new HTTPException(403, { message: "Accès interdit." });
+  }
+
+  const reportService = new ReportService();
+  if (!id) return 
+  const pdfBuffer = await reportService.generateFicheEnseignantPdf(id);
+
+  c.header('Content-Type', 'application/pdf');
+  c.header('Content-Disposition', `attachment; filename="Fiche_Charge_${id}.pdf"`);
+  return c.body(pdfBuffer as any);
 });
 
 export default utilisateurRoutes;

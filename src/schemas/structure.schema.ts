@@ -1,10 +1,7 @@
 import { z } from 'zod'
 import { Semestre } from '@prisma/client'
 
-export const filiereSchema = z.object({
-  nom: z.string().min(3, 'Nom de filière trop court').max(100).transform(val => val.trim().toUpperCase()),
-  institutId: z.number().int().positive('ID de l\'institut requis'), 
-})
+
 
 export const niveauSchema = z.object({
   libelle: z.string().min(3, 'Libellé trop court').max(50).trim(),
@@ -26,11 +23,5 @@ export const matiereSchema = z.object({
   credits: z.number().int().positive().max(30),
   semestre: z.enum(Semestre),
   filiereId: z.number().int().positive(),
-})
-
-export const courseSchema = z.object({
-  matiereId: z.number().int().positive(),
-  classeId: z.number().int().positive(),
-  anneeId: z.number().int().positive(),
 })
 

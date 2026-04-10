@@ -7,17 +7,20 @@ import 'dotenv/config'
 import authRoutes from './routes/auth.routes.js'
 import structureRoutes from './routes/structure.routes.js'
 import utilisateurRoutes from './routes/utilisateur.routes.js'
-import enseignementRoutes from './routes/enseignement.routes.js'
 import statutRoutes from './routes/statut.routes.js'
 import institutRoutes from './routes/institut.routes.js'
-import dashboardRoutes from './routes/dashboard.routes.js'
 import referentielRoutes from './routes/referentiel.routes.js'
+import attributionRoutes from './routes/attribution.routes.js'
+import dashboardRoutes from './routes/dashboard.routes.js' 
 
 const app = new Hono()
 
 app.use('*', logger())
 app.use('*', cors({
-  origin: 'https://adc-back.vercel.app', 
+  origin: [
+    'https://adc-back.vercel.app',
+    'http://localhost:3001'
+  ],
   credentials: true,
 }))
 
@@ -45,7 +48,7 @@ app.notFound((c) => {
 app.route('/auth', authRoutes)
 app.route('/structure', structureRoutes);
 app.route('/utilisateurs', utilisateurRoutes)
-app.route('/enseignements', enseignementRoutes)
+app.route('/attributions', attributionRoutes)
 app.route('/statuts', statutRoutes)
 app.route('/instituts', institutRoutes)
 app.route('/referentiel', referentielRoutes)

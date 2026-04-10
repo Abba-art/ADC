@@ -8,20 +8,25 @@ export const institutGuard = async (c: Context, next: Next) => {
 
   const role = typeof user.role === 'object' ? user.role.libelle : user.role
 
-  // 1. ADMIN → Accès global, on laisse passer
   if (role === 'ADMIN') {
     await next()
     return
   }
 
-  // 2. CHEF_DEPARTEMENT & CHEF_ETABLISSEMENT → Accès restreint à leurs instituts
   if (role === 'CHEF_DEPARTEMENT' || role === 'CHEF_ETABLISSEMENT') {
     const dbUser = await prisma.utilisateur.findUnique({
       where: { id: user.id },
-      include: { instituts: { select: { id: true } } },
+      include: { 
+        instituts: { select: { id: true } },
+        // 🔥 CORRECTION : On récupère aussi l'institut via le département pour le Chef de Dép !
+        departements: { select: { institutId: true } } 
+      },
     })
 
-    const institutIds = dbUser?.instituts.map(i => i.id) || []
+    const directInsts = dbUser?.instituts.map(i => i.id) || []
+    const depInsts = dbUser?.departements.map(d => d.institutId) || []
+    // On fusionne les IDs d'instituts (Directs + Via Départements) sans doublons
+    const institutIds = Array.from(new Set([...directInsts, ...depInsts]))
 
     if (institutIds.length === 0) {
       throw new HTTPException(403, { 
@@ -29,12 +34,10 @@ export const institutGuard = async (c: Context, next: Next) => {
       })
     }
 
-    // On stocke les IDs pour filtrer les requêtes Prisma dans les services
     c.set('institutIds', institutIds)   
     await next()
     return
   }
 
-  // 3. PROFESSEUR → On laisse passer (le filtrage se fera sur leurs propres cours)
   await next()
 }

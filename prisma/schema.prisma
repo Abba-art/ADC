@@ -7,7 +7,9 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Enums
+// ======================================================================
+// ENUMS
+// ======================================================================
 enum QuotaPeriode {
   SEMESTRE
   ANNEE
@@ -20,6 +22,12 @@ enum Semestre {
   S4
   S5
   S6
+}
+
+enum StatutValidation {
+  PROPOSITION
+  VALIDE
+  REJETE
 }
 
 // ======================================================================
@@ -59,12 +67,14 @@ model Utilisateur {
   idStatut Int
   statut   Statut @relation(fields: [idStatut], references: [id])
 
-  instituts     Institut[] // Relation Many-to-Many
-  deletedAt     DateTime?      @map("deleted_at")
-  enseignements Enseignement[]
+  instituts    Institut[] 
+  departements Departement[] // Les départements dirigés par ce chef
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  attributions Attribution[] // NOUVEAU : Remplace enseignements
+
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 }
 
 // ======================================================================
@@ -72,63 +82,73 @@ model Utilisateur {
 // ======================================================================
 
 model Institut {
-  id           Int           @id @default(autoincrement())
-  nom          String        @unique
-  adresse      String?
+  id      Int     @id @default(autoincrement())
+  nom     String  @unique
+  adresse String?
+
   utilisateurs Utilisateur[]
-  filieres     Filiere[]
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  departements Departement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
-model Filiere {
-  id        Int        @id @default(autoincrement())
-  nom       String     @unique
-  instituts Institut[]
-  classes   Classe[]
-  matieres  Matiere[] // Relation inverse manquante ajoutée
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+model Departement {
+  id         Int    @id @default(autoincrement())
+  nom        String @unique
+
+  institutId Int
+  institut   Institut @relation(fields: [institutId], references: [id], onDelete: Restrict)
+
+  utilisateurs Utilisateur[] // Les Chefs de département
+  classes      Classe[]
+  matieres     Matiere[]     // NOUVEAU : Relation Many-to-Many implicite avec Matière
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Niveau {
-  id        Int      @id @default(autoincrement())
-  libelle   String
-  classes   Classe[]
+  id      Int    @id @default(autoincrement())
+  libelle String
+
+  classes Classe[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model Classe {
-  id        Int       @id @default(autoincrement())
-  code      String    @unique
-  filiereId Int
-  filiere   Filiere   @relation(fields: [filiereId], references: [id], onDelete: Restrict)
-  niveauId  Int
-  niveau    Niveau    @relation(fields: [niveauId], references: [id], onDelete: Restrict)
-  courses   Course[]
+  id            Int         @id @default(autoincrement())
+  code          String      @unique
+  
+  departementId Int         
+  departement   Departement @relation(fields: [departementId], references: [id], onDelete: Restrict)
+  
+  niveauId      Int
+  niveau        Niveau      @relation(fields: [niveauId], references: [id], onDelete: Restrict)
+  
+  attributions  Attribution[] // NOUVEAU
+  
+  deletedAt DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
 }
 
-// ======================================================================
-// 3. Matières
-// ======================================================================
 
 model Matiere {
-  id        Int      @id @default(autoincrement())
-  code      String
-  nom       String
-  credits   Int
-  semestre  Semestre
-  filiereId Int
-  filiere   Filiere  @relation(fields: [filiereId], references: [id], onDelete: Restrict)
-  courses   Course[]
+  id           Int           @id @default(autoincrement())
+  code         String        @unique // Le code est désormais unique globalement (ex: ENG101)
+  nom          String
+  credits      Int
+  semestre     Semestre
+  
+  departements Departement[] // NOUVEAU : Une matière peut appartenir à plusieurs départements
+  
+  attributions Attribution[] // NOUVEAU
+  
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  @@unique([code, filiereId])
 }
 
 // ======================================================================
@@ -136,58 +156,44 @@ model Matiere {
 // ======================================================================
 
 model AnneeAcademique {
-  id        Int      @id @default(autoincrement())
-  libelle   String   @unique
-  courses   Course[]
+  id      Int      @id @default(autoincrement())
+  libelle String   @unique
+  
+  attributions Attribution[] // NOUVEAU
+  
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 // ======================================================================
-// 5. Cœur métier
+// 5. Cœur métier : L'Attribution (Directives M. Sonna)
 // ======================================================================
 
-model Course {
-  id        String          @id @default(uuid())
-  matiereId Int
-  matiere   Matiere         @relation(fields: [matiereId], references: [id], onDelete: Restrict)
-  classeId  Int
-  classe    Classe          @relation(fields: [classeId], references: [id], onDelete: Restrict)
-  anneeId   Int
-  annee     AnneeAcademique @relation(fields: [anneeId], references: [id], onDelete: Restrict)
+model Attribution {
+  id               String           @id @default(uuid())
+  
+  utilisateurId    String
+  utilisateur      Utilisateur      @relation(fields: [utilisateurId], references: [id], onDelete: Restrict)
+  
+  matiereId        Int
+  matiere          Matiere          @relation(fields: [matiereId], references: [id], onDelete: Restrict)
+  
+  classeId         Int
+  classe           Classe           @relation(fields: [classeId], references: [id], onDelete: Restrict)
+  
+  anneeId          Int
+  annee            AnneeAcademique  @relation(fields: [anneeId], references: [id], onDelete: Restrict)
 
-  enseignements Enseignement[]
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-
-  @@unique([matiereId, classeId, anneeId])
-}
-
-enum StatutValidation {
-  PROPOSITION
-  VALIDE
-  REJETE
-}
-
-model Enseignement {
-  id            String      @id @default(uuid())
-  utilisateurId String
-  utilisateur   Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Restrict)
-  courseId      String
-  course        Course      @relation(fields: [courseId], references: [id], onDelete: Restrict)
-  dateDebut     DateTime    @default(now())
-  dateFin       DateTime?
-  motif         String?
-  estActif      Boolean     @default(true)
-
-  // NOUVEAU : Gère le workflow de M. Nsona
+  // Historique et réattributions
+  dateDebut        DateTime         @default(now())
+  dateFin          DateTime?
+  motif            String?
+  estActif         Boolean          @default(true) 
   statutValidation StatutValidation @default(PROPOSITION)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
-  @@index([courseId, estActif])
+  @@index([matiereId, classeId, anneeId, estActif])
   @@index([utilisateurId])
 }
